@@ -2,6 +2,8 @@
 
 Neural network system for prediction and filtering of novelty in text data
 
+Author - Dmitriy Miloserdov
+
 This program implements the neural network of V.Y. Osipov (https://doi.org/10.1016/j.neucom.2018.05.009) and implements the functionality described in the articles (https://doi.org/10.1007/s00521-020-04843-5 , https://doi.org/10.1016/j.eswa.2020.114521 )
 
 How to use:
