@@ -1,0 +1,20 @@
+pyuic5 GUI/MainWindow.ui -o GUI/MainWindow.py
+
+# import tensorflow as tf
+#
+# if __name__ == "__main__":
+#
+#     # /CPU:0
+#     # /GPU:0
+#
+#     #physical_devices = tf.config.experimental.list_physical_devices('GPU')
+#     #print(physical_devices)
+#
+#     tf.debugging.set_log_device_placement(True)
+#
+#     # with tf.device('/GPU:0'):
+#     #     a = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+#     #     b = tf.constant([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+#     #     c = tf.matmul(a, b)
+#
+#     t = 0

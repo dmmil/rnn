@@ -1,0 +1,242 @@
+# class RnnCore(QtCore.QObject):
+#     signalVisualize = pyqtSignal(np.ndarray)
+#
+#     def __init__(self, common_params: CommonParams, id: int): # id is rnn instance identifier. if id==0, it is rnn1
+#         super(RnnCore, self).__init__()
+#         self.common_params = common_params
+#
+#         if id == 0:
+#             self.rnn_params = RnnParams('settings_rnn1.ini', self.common_params)
+#         elif id == 1:
+#             self.rnn_params = RnnParams('settings_rnn2.ini', self.common_params)
+#         else:
+#             raise 'uncorrect rnn instance id'
+#
+#         self.route = init_route(self.common_params.route_type, self.common_params.L, self.common_params.M)
+#         self.output_fields = []
+#
+#         self.io_device = TestIODevice(self.common_params.d, self.common_params.q)
+#
+#         self.SSPs = []
+#         self.sspTact = 0  # if 0, than it tact for new ssp subbitting
+#
+#         # neurones
+#         self.neu_current_values = np.zeros((len(self.route), self.common_params.d, self.common_params.q), dtype=np.float64)
+#
+#         # 0 - waiting, -1 - active, 1...N - refract
+#         self.neu_states = np.zeros((len(self.route), self.common_params.d, self.common_params.q), dtype=np.int8)
+#
+#         # future_fields_combinations
+#         self.future_route_indexes = dict()
+#         self.future_route_fields = dict()
+#         for i in range(len(self.route)-1):
+#             field_indexes_next_tact = (i + 1) % self.common_params.ssp_interval
+#             tmp_route_indexes = []
+#             tmp_route_fields = []
+#             for j in range(field_indexes_next_tact, len(self.route), self.common_params.ssp_interval):
+#                 tmp_route_indexes.append(j)
+#                 tmp_route_fields.append(self.route[j])
+#             self.future_route_indexes[i] = tmp_route_indexes
+#             self.future_route_fields[i] = tmp_route_fields
+#
+#         # past_fields_combinations
+#         self.past_route_indexes = dict()
+#         self.past_route_fields = dict()
+#         for i in range(1, len(self.route)):
+#             field_indexes_prev_tact = (i - 1) % self.common_params.ssp_interval
+#             tmp_route_indexes = []
+#             tmp_route_fields = []
+#             for j in range(field_indexes_prev_tact, len(self.route), self.common_params.ssp_interval):
+#                 tmp_route_indexes.append(j)
+#                 tmp_route_fields.append(self.route[j])
+#             self.past_route_indexes[i] = tmp_route_indexes
+#             self.past_route_fields[i] = tmp_route_fields
+#
+#         # check
+#         self.connected_route_indexes_len = len(self.past_route_indexes[1])
+#         for i in range(len(self.past_route_indexes)):
+#             if len(self.past_route_indexes[i+1]) != self.connected_route_indexes_len:
+#                 raise 'Some shit'
+#         for i in range(len(self.future_route_indexes)):
+#             if len(self.future_route_indexes[i]) != self.connected_route_indexes_len:
+#                 raise 'Some shit'
+#
+#
+#         self.snp_g = np.zeros((len(self.route), self.common_params.d, self.common_params.q,
+#                                self.connected_route_indexes_len, self.common_params.d,
+#                                self.common_params.q), dtype=np.float64)
+#         self.snp_k = np.zeros((len(self.route), self.common_params.d, self.common_params.q,
+#                                self.connected_route_indexes_len, self.common_params.d,
+#                                self.common_params.q), dtype=np.float64)
+#         # self.snp_w = np.zeros((len(self.route), self.common_params.d, self.common_params.q,
+#         #                        self.connected_route_indexes_len, self.common_params.d,
+#         #                        self.common_params.q), dtype=np.float64)
+#
+#         # set direct synaps weights to 1
+#         self.init_direct_synaps_weights()
+#
+#         # init gain distance coeffs (snp_b)
+#         self.snp_b = np.zeros((len(self.route), self.connected_route_indexes_len), dtype=np.float64)
+#         self.init_distance_gain_coeffs()
+#
+#     def init_direct_synaps_weights(self):
+#         for i in range(len(self.route)-1):
+#             for id in range(self.common_params.d):
+#                 for iq in range(self.common_params.q):
+#                     self.snp_k[i, id, iq, self.future_route_indexes[i].index(i+1), id, iq] = 1
+#
+#     def init_distance_gain_coeffs(self):
+#         for i in range(len(self.route)-1):
+#             if i == len(self.route)-1:
+#                 L_shift = self.route[0]['L'] - self.route[len(self.route) - 1]['L']
+#                 M_shift = self.route[0]['M'] - self.route[len(self.route) - 1]['M']
+#             else:
+#                 L_shift = self.route[i + 1]['L'] - self.route[i]['L']
+#                 M_shift = self.route[i + 1]['M'] - self.route[i]['M']
+#
+#             for j in range(self.connected_route_indexes_len):
+#                 y_distance = self.route[self.future_route_indexes[i][j]]['L'] - self.route[i]['L'] - L_shift
+#                 x_distance = self.route[self.future_route_indexes[i][j]]['M'] - self.route[i]['M'] - M_shift
+#
+#                 distance = ((y_distance**2)+(x_distance**2))**0.5
+#
+#                 self.snp_b[i, j] = 1.0 / (1.0 + self.rnn_params.alpha * distance**(1.0/self.rnn_params.h))
+#
+#     def refreshParams(self, alpha: float, h: float, io_input: str):
+#         betas_refresh_is_needed = False
+#         if self.rnn_params.alpha != alpha:
+#             betas_refresh_is_needed = True
+#             self.rnn_params.alpha = alpha
+#         if self.rnn_params.h != h:
+#             betas_refresh_is_needed = True
+#             self.rnn_params.h = h
+#         if betas_refresh_is_needed:
+#             self.init_distance_gain_coeffs()
+#
+#         io_refresh_is_needed = False
+#         #if self.rnn_params
+#
+#         self.rnn_params.rewrite()
+#
+#     def startProcessSignals(self):
+#         # finish prev processing if exists
+#         self.finishProcessSignals()
+#
+#         # set first ssp to rnn
+#         self.sspTact == 0
+#         self.getNextSSP()
+#
+#         self.signalVisualize.emit(self.neu_states)
+#
+#     def processSignals(self):
+#         if not len(self.SSPs):
+#             self.finishProcessSignals()
+#             return
+#
+#         # step 1: get outputs
+#         for item in self.rnn_params.output_fields:
+#             if item in self.SSPs:
+#                 self.io_device.sendSspToOutput(self.route.index(item), self.neu_states[self.route.index(item), :, :])
+#
+#         # step 2: emitting signals
+#         for item in self.SSPs:
+#             if item == self.route[len(self.route)-1]:
+#                 continue
+#
+#             route_ssp_index = self.route.index(item)
+#             tmpIndexes = self.future_route_indexes[route_ssp_index]
+#             #tmpFields = self.future_route_fields[route_ssp_index]
+#
+#             if self.rnn_params.flag_clear_learning and not self.rnn_params.flag_forecasting:
+#
+#                 # direct synaps emitting only
+#                 self.neu_current_values[route_ssp_index + 1,
+#                                         np.logical_or(self.neu_states[self.route.index(item), :, :] == -1,
+#                                         self.neu_states[self.route.index(item), :, :] == self.common_params.refract_interval)
+#                                         ] = np.finfo(np.float64).max
+#
+#             else:
+#                 for id in range(self.common_params.d):
+#                     for iq in range(self.common_params.q):
+#                         if self.neu_states[self.route.index(item), id, iq] == -1:
+#                             for ind in tmpIndexes:
+#                                 self.neu_current_values[ind, :, :] += \
+#                                 self.snp_k[route_ssp_index, id, iq, tmpIndexes.index(ind), :, :] * \
+#                                 self.snp_b[route_ssp_index, tmpIndexes.index(ind)]
+#
+#
+#         # Step 3: define next tact ssps fields
+#         new_SSPs = []
+#         for item in self.SSPs:
+#             new_ssp_index = self.route.index(item)+1
+#             if new_ssp_index < len(self.route):
+#                 new_SSPs.append(self.route[new_ssp_index])
+#         self.SSPs = new_SSPs
+#
+#         # step 4: Define borders
+#         self.current_border = 0.5
+#
+#         # step 5: neu states refresh
+#         self.neu_states[self.neu_states > 0] += 1
+#         self.neu_states[self.neu_states > 0] %= (self.common_params.refract_interval+1)
+#         self.neu_states[self.neu_states == -1] = 1
+#         self.neu_states[np.logical_and(self.neu_current_values > self.current_border, self.neu_states == 0)] = -1
+#         self.neu_current_values[:, :, :] = 0
+#
+#         # step 6: learn
+#         if self.rnn_params.flag_learning and not self.rnn_params.flag_forecasting:
+#
+#             # refresh g param
+#             for dst_ssp in self.SSPs:
+#                 dst_route_index = self.route.index(dst_ssp)
+#                 tmpIndexes = self.future_route_indexes[dst_route_index-1]
+#                 for dst_id in range(self.common_params.d):
+#                     for dst_iq in range(self.common_params.q):
+#                         if self.neu_states[dst_route_index, dst_id, dst_iq] != -1:  # if dst neu not active
+#                             continue
+#
+#                         # if src neu waiting (was waiting)
+#                         vvv = self.neu_states == 0
+#                         self.snp_g[self.neu_states == 0, tmpIndexes.index(dst_route_index), dst_id, dst_iq] -= self.rnn_params.gDec
+#
+#                         # if src neu start refract (was active)
+#                         self.snp_g[self.neu_states == 1, tmpIndexes.index(dst_route_index), dst_id, dst_iq] += self.rnn_params.gInc
+#
+#             # update weight
+#             self.snp_k = 2.0 / (1.0 + vexp(-self.rnn_params.gamma * self.snp_g)) - 1.0
+#             self.init_direct_synaps_weights()
+#
+#         # step 7: next ssp submit
+#         self.getNextSSP()
+#
+#
+#         self.signalVisualize.emit(self.neu_states)
+#
+#
+#     def finishProcessSignals(self):
+#         self.SSPs = []
+#         self.neu_current_values = np.zeros((len(self.route), self.common_params.d, self.common_params.q), dtype=np.float64)
+#         self.neu_states = np.zeros((len(self.route), self.common_params.d, self.common_params.q), dtype=np.int8)
+#
+#         self.io_device.reset()
+#
+#         self.signalVisualize.emit(self.neu_states)
+#
+#     def clearRnn(self):
+#         self.finishProcessSignals()
+#
+#         self.snp_g = np.zeros((len(self.route), self.common_params.d, self.common_params.q,
+#                                self.connected_route_indexes_len, self.common_params.d, self.common_params.q), dtype=np.float64)
+#         self.snp_k = np.zeros((len(self.route), self.common_params.d, self.common_params.q,
+#                                self.connected_route_indexes_len, self.common_params.d, self.common_params.q), dtype=np.float64)
+#         # self.snp_w = np.zeros((len(self.route), self.common_params.d, self.common_params.q,
+#         #                        self.connected_route_indexes_len, self.common_params.d, self.common_params.q), dtype=np.float64)
+#
+#     def getNextSSP(self):
+#         if self.sspTact == 0:
+#             ssp = self.io_device.getSspFromInput()
+#             if len(ssp):
+#                 self.neu_states[0, self.neu_states[0] == 0] = \
+#                 ssp[self.neu_states[0] == 0]*-1
+#                 self.SSPs.append(self.route[0])
+#         self.sspTact = (self.sspTact + 1) % (self.common_params.ssp_interval)
